@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ========== End of recommended Python.gitignore ==========
+
+# Custom ignores
+data
+data/images
