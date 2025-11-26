@@ -6,23 +6,21 @@ authors = [
     {name = "Mohamed Khalil OUNIS",email = "khalilounis10@gmail.com"},
     {name = "Oussama BELHAJ RHOUMA",email = "oussama10rhouma@gmail.com"},
     {name = "Lina RHIATI HAZIME",email = "lina.rhiati2@gmail.com"},
-    {name = "Reda ELWARADI",email = "you@example.com"},
-    {name = "Kamal BELMAJDOUB",email = "you@example.com"}
+    {name = "Reda ELWARADI",email = "reda.elwaradi@telecom-paris.fr"},
+    {name = "Kamal BELMAJDOUB",email = "Kamalbelmaj@gmail.com"}
 ]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
-package-mode = false
