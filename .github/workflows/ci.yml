@@ -33,4 +33,11 @@ jobs:
 
       - name: Run tests
         run: |
-          poetry run pytest
+          set -e
+          poetry run pytest || code=$?
+          if [ "$code" = "5" ]; then
+            echo "No tests collected yet – treating as success."
+            exit 0
+          elif [ -n "$code" ]; then
+            exit "$code"
+          fi
