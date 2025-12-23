@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "loreal-shades-clustering"
+version = "0.1.0"
+description = "Ce projet a été réalisé dans un cadre académique en collaboration avec L’Oréal, qui en a proposé le sujet et accompagné son développement. Il porte sur la problématique du shades clustering, c’est-à-dire la classification et l’organisation de nuances de teintes afin d’améliorer leur représentation et leur cohérence dans des applications industrielles. Le travail a été mené sous le double encadrement des équipes de L’Oréal, apportant une expertise métier, et des tuteurs académiques de Télécom Paris, garantissant la rigueur scientifique et méthodologique du projet. Cette collaboration a permis d’aborder le sujet selon une approche à la fois professionnelle, technique et pédagogique."
+authors = [
+  "Mohamed Khalil OUNIS <khalilounis10@gmail.com>",
+  "Oussama BELHAJ RHOUMA <oussama10rhouma@gmail.com>",
+  "Lina RHIATI HAZIME <lina.rhiati2@gmail.com>",
+  "Reda ELWARADI <reda.elwaradi@telecom-paris.fr>",
+  "Kamal BELMAJDOUB <Kamalbelmaj@gmail.com>"
+]
+license = "MIT"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
