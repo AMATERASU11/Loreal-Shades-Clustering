@@ -211,3 +211,14 @@ __marimo__/
 # Custom ignores
 data
 data/images
+
+# Reda ignores
+.DS_Store
+Sans titre.key
+data.parquet
+images/
+presentations/
+products.csv
+products.numbers
+sujet.pdf
+
