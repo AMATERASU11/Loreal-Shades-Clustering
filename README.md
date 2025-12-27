@@ -1,0 +1,3 @@
+# Loreal-Shades-Clustering
+
+Ce projet a été réalisé dans un cadre académique en collaboration avec L’Oréal, qui en a proposé le sujet et accompagné son développement. Il porte sur la problématique du shades clustering, c’est-à-dire la classification et l’organisation de nuances de teintes afin d’améliorer leur représentation et leur cohérence dans des applications industrielles. Le travail a été mené sous le double encadrement des équipes de L’Oréal, apportant une expertise métier, et des tuteurs académiques de Télécom Paris, garantissant la rigueur scientifique et méthodologique du projet. Cette collaboration a permis d’aborder le sujet selon une approche à la fois professionnelle, technique et pédagogique.
