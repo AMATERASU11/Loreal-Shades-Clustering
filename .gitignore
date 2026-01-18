@@ -208,9 +208,26 @@ __marimo__/
 
 # ========== End of recommended Python.gitignore ==========
 
-# Custom ignores
-data
+# Custom ignores - Données
+data/processed/**
+!data/processed/.gitkeep
+data/raw/**
+!data/raw/.gitkeep
+data/external/**
+!data/external/.gitkeep
 data/images
+
+# Outputs - fichiers générés (garder structure)
+outputs/models/**
+!outputs/models/.gitkeep
+outputs/reports/**
+!outputs/reports/.gitkeep
+outputs/visualizations/**
+!outputs/visualizations/.gitkeep
+outputs/predictions/**
+!outputs/predictions/.gitkeep
+outputs/logs/**
+!outputs/logs/.gitkeep
 
 # Reda ignores
 .DS_Store
@@ -221,4 +238,6 @@ presentations/
 products.csv
 products.numbers
 sujet.pdf
+
+
 
