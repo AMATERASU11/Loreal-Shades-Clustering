@@ -1,0 +1,57 @@
+# ============================================================
+# face_shade_clustering — Configuration centrale
+# ============================================================
+
+data:
+  parquet_path: "/home/linar/projet-filrouge/Loreal-Shades-Clustering/data/raw/data.parquet"
+  images_dir: "/home/linar/projet-filrouge/Loreal-Shades-Clustering/data/raw/images/images"
+  output_path: "/home/linar/projet-filrouge/Loreal-Shades-Clustering/data/processed/output_shade_clusters.parquet"
+
+segment:
+  category_level_2: "Face"
+  keywords:
+    - foundation
+    - concealer
+    - bb cream
+    - cc cream
+    - tinted moisturizer
+    - skin tint
+    - corrector
+    - cushion
+    - blush
+    - bronzer
+    - highlighter
+    - fard à joues
+    - poudre de soleil
+    - terracotta
+    - enlumineur
+    - glow
+
+preprocessing:
+  min_valid_pixels: 50
+  image_resize: 600
+  white_threshold: 245
+  black_threshold: 10
+
+swatch_extraction:
+  min_skin_pixels: 120
+  prefer_center: true
+  patch_size: 80
+  step_size: 40
+  min_patch_coverage: 0.60
+  prefer_lower: true
+  kmeans_k: 5
+  max_pixels_sample: 60000
+
+clustering:
+  method: "image"
+  text_weight: 0.5
+  image_weight: 0.5
+  k_max: 8
+  min_group_size: 3
+  random_state: 42
+  delta_e_threshold: 8.0
+
+evaluation:
+  min_ari_score: 0.5
+  min_purity: 0.7
