@@ -67,6 +67,11 @@ def step_predict(product_id: str):
     """Prédit la couleur d'un produit par son product_id (ShadeNail ranking)."""
     from src.clustering.tier4_ranking import load_model, predict
 
+    if not LABELED_PARQUET.exists():
+        print(f"ERREUR : dataset labellisé introuvable → {LABELED_PARQUET}")
+        print("  --predict nécessite le parquet. Utilisez --infer avec un CSV à la place.")
+        sys.exit(1)
+
     df = pd.read_parquet(LABELED_PARQUET)
     row_df = df[df["product_id"] == product_id]
 
@@ -253,6 +258,11 @@ def main():
         step_precompute(force=args.force)
 
     elif args.train:
+        if not LABELED_PARQUET.exists():
+            print(f"ERREUR : dataset labellisé introuvable → {LABELED_PARQUET}")
+            print("  Ce fichier n'est pas inclus dans le repo (données privées).")
+            print("  Demander nail_all_labeled_1261.parquet à l'équipe.")
+            sys.exit(1)
         n_cached = len(list(CACHE_DIR.glob("*.npz")))
         if n_cached == 0:
             print("ERREUR : cache vide. Lancer d'abord : --precompute")
@@ -261,6 +271,11 @@ def main():
         step_train()
 
     elif args.evaluate:
+        if not LABELED_PARQUET.exists():
+            print(f"ERREUR : dataset labellisé introuvable → {LABELED_PARQUET}")
+            print("  Ce fichier n'est pas inclus dans le repo (données privées).")
+            print("  Demander nail_all_labeled_1261.parquet à l'équipe.")
+            sys.exit(1)
         step_evaluate()
 
     elif args.predict:
