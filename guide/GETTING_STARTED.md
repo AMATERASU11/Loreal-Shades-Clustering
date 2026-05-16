@@ -1,162 +1,157 @@
-# Premiers pas - Guide d'installation et contribution
+﻿# Getting Started — ShadeNail
 
-## 1️⃣ Cloner le repository
+Guide pas-a-pas pour lancer votre premiere inference ShadeNail.
 
-```bash
-# Clonez le projet
-git clone https://github.com/your-org/Loreal-Shades-Clustering.git
-cd Loreal-Shades-Clustering
-```
+> **Prerequis** : avoir termine l'[installation](INSTALLATION.md).
 
-## 2️⃣ Setup de l'environnement
-
-### Option A : Avec le script (recommandé)
+## Workflow rapide (TL;DR)
 
 ```bash
-bash setup.sh
+cd Loreal-Shades-Clustering           # 1. Se placer a la racine
+# Activer le venv (.venv ou poetry)
+source .venv/bin/activate              # Linux/Mac
+# .venv\Scripts\Activate.ps1           # Windows PowerShell
+
+# 2. Placer vos images dans data/raw/images/
+# 3. Preparer votre CSV avec une colonne image_filename
+# 4. Lancer l'inference
+python -m src.main --infer --input data/raw/mon_fichier.csv
+# 5. Resultat dans outputs/predictions/predictions.csv
 ```
-
-Ce script :
-- ✅ Vérifie Python 3.11
-- ✅ Vérifie Poetry 
-- ✅ Configure l'environnement virtuel Poetry
-
-### Option B : Manuel
-
-```bash
-# Installer les dépendances avec Poetry
-poetry install
-
-# Activer l'environnement
-poetry shell
-```
-
-## 3️⃣ Créer votre branche de travail
-
-### Nomenclature des branches
-
-```
-feature/nom-feature         # Nouvelle fonctionnalité
-bugfix/nom-bug              # Correction de bug (branche pour la correction des bugs)
-docs/nom-documentation      # Documentation (branche propre pour la documentation)
-```
-
-### Créer la branche
-
-```bash
-# Créer ET basculer sur la nouvelle branche
-git checkout -b feature/votre-nom
-
-# Ou si elle existe déjà
-git checkout feature/votre-nom
-```
-
-## 4️⃣ Vérifier l'installation
-
-```bash
-# Vérifier que tout fonctionne
-python src/main.py
-
-# Lancer les tests (optionnel)
-pytest tests/
-```
-
-## 5️⃣ Travailler sur votre branche
-
-### Faire des modifications
-
-```bash
-# Voir les changements
-git status
-
-# Ajouter les fichiers
-git add .
-
-# Commit avec message clair
-git commit -m "feat: description claire de ce que vous faites"
-
-# Envoyer sur la branche distante
-git push origin feature/votre-nom
-```
-
-### Messages de commit (Convention)
-
-```
-feat:     nouvelle fonctionnalité
-fix:      correction de bug
-docs:     documentation
-refactor: restructuration du code
-test:     ajout de tests
-```
-
-**Exemple** :
-```bash
-git commit -m "feat: ajoute preprocessing des nuances de couleur"
-git commit -m "fix: corrige bug dans le clustering KMeans"
-git commit -m "docs: met à jour ARCHITECTURE.md"
-```
-
-## 6️⃣ Pull Request et Merge
-
-### Avant de faire un PR
-
-1. **Assurez-vous que tout fonctionne** :
-   ```bash
-   python src/main.py
-   pytest tests/
-   ```
-
-2. **Récupérez les derniers changements** :
-   ```bash
-   git fetch origin
-   git rebase origin/main
-   ```
-
-3. **Pushez votre branche** :
-   ```bash
-   git push origin feature/votre-nom
-   ```
-
-### Créer une Pull Request
-
-- Allez sur GitHub
-- Cliquez sur "Compare & pull request"
-- Décrivez vos changements
-- Demandez une review
 
 ---
 
-## Commandes utiles
+## Etape 1 — Preparer les images
 
-```bash
-# Voir toutes les branches
-git branch -a
+Placez toutes vos images de vernis a ongles dans :
 
-# Voir l'historique des commits
-git log --oneline
-
-# Voir les changements en attente
-git status
-
-# Annuler un changement local
-git restore fichier.py
-
-# Annuler un commit (garde les changements)
-git reset --soft HEAD~1
-
-# Voir les différences
-git diff
+```
+data/raw/images/
 ```
 
-## 📁 Structure du projet
+Le dossier existe deja (vide). Copiez-y vos images :
+```bash
+cp /chemin/vers/mes_images/*.jpg data/raw/images/
+# ou glisser-deposer sous Windows/Mac
+```
 
-Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour la structure complète.
+Formats supportes : `.jpg`, `.jpeg`, `.png`
+
+## Etape 2 — Preparer le CSV d'entree
+
+Creez un fichier CSV avec au minimum une colonne `image_filename` :
+
+```csv
+image_filename,product_id,product_name
+vernis_rouge_01.jpg,P001,Rouge Passion
+vernis_bleu_02.jpg,P002,Bleu Ocean
+vernis_nude_03.jpg,P003,Nude Rose
+```
+
+Colonnes :
+- **`image_filename`** (obligatoire) : nom du fichier image tel qu'il apparait dans `data/raw/images/`
+- **`product_id`** (optionnel) : identifiant produit, sera recopie dans la sortie
+- **`product_name`** (optionnel) : nom du produit
+- **`shade_name`** (optionnel) : nom de la teinte — utilise par le Tier 2 (NLP Prior) pour ameliorer la prediction
+
+> **Note** : si `shade_name` contient un nom de couleur (ex: "Rouge Passion", "Blue Lagoon"), le pipeline l'utilise comme indice supplementaire via le NLP Prior.
+
+Placez ce CSV quelque part dans le projet, par exemple :
+```
+data/raw/mon_fichier.csv
+```
+
+## Etape 3 — Lancer l'inference
+
+```bash
+python -m src.main --infer --input data/raw/mon_fichier.csv
+```
+
+Le pipeline va :
+1. **Precomputer le cache rembg** : suppression du fond de chaque image (~1-2 sec/image). Cache stocke dans `outputs/cache/` pour ne pas refaire le travail.
+2. **Predire** pour chaque ligne du CSV :
+   - Tier 0 (Gatekeeper) : detecte les kits multi-vernis et les incolores
+   - Tier 1 (Texture) : detecte glitter/shimmer/holographique
+   - Tier 3 (Vision) : KMeans K=5 sur les pixels, extraction de 35 features
+   - Tier 2 (NLP Prior) : si `shade_name` existe, calcule les features deltaE
+   - Tier 4 (ShadeNail Ranking) : XGBoost predit le deltaE par cluster, choisit le meilleur
+
+### Duree estimee
+
+| Nombre d'images | Premiere fois (avec cache) | Suivantes (cache existant) |
+|-----------------|---------------------------|---------------------------|
+| 10 | ~30 sec | ~5 sec |
+| 100 | ~3 min | ~30 sec |
+| 1000 | ~30 min | ~5 min |
+
+## Etape 4 — Lire les resultats
+
+La sortie est dans :
+```
+outputs/predictions/predictions.csv
+```
+
+Colonnes de sortie :
+| Colonne | Description |
+|---------|-------------|
+| `image_filename` | Nom du fichier image |
+| `predicted_rgb` | Couleur predite en RGB `(R, G, B)` |
+| `predicted_hex` | Couleur predite en hexadecimal `#RRGGBB` |
+| `predicted_lab` | Couleur predite en Lab `(L, a, b)` |
+| `chosen_cluster` | Index du cluster choisi (0-4) |
+| `tier` | Quel tier a produit la prediction |
+| `is_kit` | True si detecte comme kit multi-vernis |
+| `is_clear` | True si detecte comme incolore/transparent |
+| `has_glitter` | True si detecte comme glitter/shimmer |
+
+## Autres commandes utiles
+
+### Prediction pour un seul produit
+
+```bash
+python -m src.main --predict --product_id P001
+```
+
+### Entrainement (necessite le dataset labellise)
+
+```bash
+python -m src.main --train
+```
+
+> Necessite `data/labeled/nail_all_labeled_1261.parquet` — demander a l'equipe.
+
+### Evaluation
+
+```bash
+python -m src.main --evaluate
+```
+
+### Pipeline complet (train + evaluate)
+
+```bash
+python -m src.main --full
+```
+
+## Structure des dossiers
+
+Apres une inference, votre projet ressemble a :
+```
+Loreal-Shades-Clustering/
+  data/
+    raw/
+      images/           <-- vos images ici
+      mon_fichier.csv   <-- votre CSV d'entree
+  outputs/
+    cache/              <-- cache rembg (genere automatiquement)
+    models/
+      shadenail_xgb.pkl <-- modele XGBoost (inclus dans le repo)
+      shadenail_meta.json
+    predictions/
+      predictions.csv   <-- resultats ici
+  src/
+    ...
+```
 
 ---
 
-##  Besoin d'aide ?
-
-- Consultez [ARCHITECTURE.md](ARCHITECTURE.md)
-- Ouvrez une issue sur GitHub
-
-**Bonne contribution !** 
+**Voir aussi : [ARCHITECTURE.md](ARCHITECTURE.md) pour comprendre le fonctionnement interne du pipeline.**
