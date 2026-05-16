@@ -1,164 +1,123 @@
-# Project Setup Guide — Shades Clustering
+﻿# Installation — ShadeNail
 
-This guide explains how to install and use Poetry to manage the dependencies, environments, and development workflow of this project.
+Guide d'installation du pipeline ShadeNail pour l'extraction automatique de couleur de vernis a ongles.
 
-## 1. Install Poetry
+## Prerequis
 
-You must have **Python = 3.11** installed.
+| Element | Version |
+|---------|---------|
+| **Python** | 3.11 (obligatoire) |
+| **Git** | recent |
+| **Espace disque** | ~500 MB (dependances + modele rembg) |
 
-Check your Python version:
-```
-python3 --version
-```
-
-If it’s correct, install [Poetry 2.2.0](https://python-poetry.org/docs/#installation) globally:
-```
-curl -sSL https://install.python-poetry.org | python3 - --version 2.2.0
-```
-
-Then make sure Poetry is available in your path:
-```
-poetry --version
-```
-
-If not found, add it manually (depending on your system):
-```
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-## 2. Clone the Project
-```
-git clone https://github.com/AMATERASU11/Loreal-Shades-Clustering.git
-cd Loreal-Shades-Clustering
-```
-
-## 3. Run the setup script:
+Verifier Python :
 ```bash
-./setup.sh
+python --version   # ou python3 --version
+# Doit afficher Python 3.11.x
 ```
 
-This will:
-- Check for Python 3.11
-- Check for Poetry 2.2.0
-- Set up a virtual environment
+## 1. Cloner le projet
 
-## 4. Install Dependencies
-
-All project dependencies are declared in `pyproject.toml`.
-
-To install everything (main + dev dependencies):
-```
-poetry install
+```bash
+git clone https://github.com/Telecom-Paris-Team-L-oreal-2025-2026/Loreal-Shades-Clustering.git
+cd Loreal-Shades-Clustering
+git checkout vernis-a-ongle
 ```
 
-If you only want runtime dependencies (without dev tools like Sphinx or pytest):
-```
-poetry install --without dev
-```
+## 2. Installer les dependances
 
-## 5. Use the Virtual Environment
+### Option A — pip (recommande, plus simple)
 
-Poetry automatically creates a virtual environment.
+```bash
+# Creer un environnement virtuel
+python -m venv .venv
 
-To get basic information about the currently activated virtual environment, you can use the `env info` command:
-```
-poetry env info
-```
+# Activer l'environnement
+# Linux / Mac :
+source .venv/bin/activate
+# Windows PowerShell :
+.venv\Scripts\Activate.ps1
+# Windows CMD :
+.venv\Scripts\activate.bat
 
-The `poetry env activate` command prints the activate command of the virtual environment to the console. You can run the output command manually or feed it to the eval command of your shell to activate the environment.
-```
-eval $(poetry env activate)
-```
-
-Now, any Python or Streamlit commands you run will use this environment.
-
-*Alternatively*, you can run commands without entering the shell:
-```
-poetry run python src/main.py
-```
-
-## 6. Running Tests
-
-Tests are located in the `tests/ directory`.
-You can run them with:
-```
-poetry run pytest
-```
-
-If you have already activated the environment in your current shell:
-```
-pytest
-```
-
-## 7. Documentation (optional) [Not implemented yet]
-
-If you want to build the Sphinx documentation locally:
-```
-poetry run sphinx-build -b html docs/ docs/_build/
-```
-
-## 8. Adding or Updating Dependencies
-
-To add a new library:
-```
-poetry add numpy
-```
-
-To add a development dependency (like black or pytest):
-```
-poetry add --group dev black
-```
-
-To update dependencies:
-```
-poetry update
-```
-
-## 9. Export Requirements (for non-Poetry users)
-
-If someone prefers using plain pip, they can generate a requirements.txt:
-```
-poetry export -f requirements.txt --output requirements.txt
-```
-
-Then install using:
-```
+# Installer
 pip install -r requirements.txt
 ```
 
-## 10. Troubleshooting
+### Option B — Poetry
 
-Poetry environment not found?
-```
-poetry env info
-poetry env remove python
-poetry install
-```
+```bash
+# Installer Poetry si necessaire
+curl -sSL https://install.python-poetry.org | python3 - --version 2.2.0
 
-To check all available environments:
-```
-poetry env list
-```
+# Installer les dependances
+poetry install --without dev
 
-To clear all Poetry caches (rarely needed):
-```
-poetry cache clear pypi --all
+# Activer l'environnement
+eval $(poetry env activate)
+# Windows : executer la commande affichee par poetry env activate
 ```
 
-<hr style="height:7px;border-width:0;color:black;background-color:red">
+## 3. Verifier l'installation
 
-## Best Practices for Contributors
-
-* Always run `poetry install` after pulling new changes.
-
-* Never manually edit `poetry.lock`.
-
-* Use `poetry add` to install new dependencies.
-
-* Commit both `pyproject.toml` and `poetry.lock`.
-
-* Before pushing, test locally with:
+```bash
+python -m src.main --help
 ```
-poetry run pytest
+
+Resultat attendu :
 ```
-Tests should be running without problems. So for starters, no test has been implemented yet. Therefore, retrieveing 0 element for testing is normal.
+Pipeline ShadeNail
+options:
+  --infer        Mode inference ShadeNail
+  --input INPUT  CSV d'entree pour --infer
+  ...
+```
+
+## 4. Premier lancement — telechargement rembg
+
+Au premier lancement, `rembg` telecharge automatiquement le modele de suppression de fond U2-Net (~176 MB). C'est normal, ca ne se fait qu'une seule fois.
+
+Test rapide :
+```bash
+python -c "from rembg import remove; print('rembg OK')"
+```
+
+## Dependances principales
+
+| Package | Role |
+|---------|------|
+| `xgboost` | Modele ShadeNail (regression deltaE) |
+| `scikit-learn` | KMeans clustering (K=5) |
+| `scikit-image` | Conversion couleur RGB / Lab |
+| `rembg` | Suppression automatique du fond image |
+| `pandas` | Manipulation des donnees CSV |
+| `pillow` | Chargement des images |
+| `tqdm` | Barres de progression |
+
+## Troubleshooting
+
+### `rembg` ne s'installe pas
+
+```bash
+pip install onnxruntime   # installer onnxruntime d'abord
+pip install rembg          # puis rembg
+```
+
+### Erreur `ModuleNotFoundError: No module named 'src'`
+
+Toujours lancer les commandes **depuis la racine du projet** :
+```bash
+cd Loreal-Shades-Clustering
+python -m src.main --infer --input data/raw/mon_fichier.csv
+```
+
+### Windows : erreur d'encodage UTF-8
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+python -m src.main --infer --input data/raw/mon_fichier.csv
+```
+
+---
+
+**Suite : [GETTING_STARTED.md](GETTING_STARTED.md) pour lancer votre premiere inference.**
