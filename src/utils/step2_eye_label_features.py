@@ -12,7 +12,7 @@ IMAGE_DIR = os.path.join(BASE_DIR, "data", "raw", "images")
 
 # Objectifs de labeling par sous-catégorie Eye
 TARGET_PER_CLASS = 100  # 100 exemples par sous-catégorie
-TARGET_CLASSES = ['Eye Shadow', 'Eye Liner', 'Mascara', 'Eyebrow']
+TARGET_CLASSES = ['Eye Shadow', 'Eye Liner', 'Mascara', 'Eyebrow', 'Fake Lashes']
 CATEGORY_COL = 'category_level_3_name'
 
 # Configuration affichage
@@ -115,19 +115,39 @@ def main():
     print("🎨 Labellisation Eye - Démarrage")
     print("=" * 70)
     
+    if not os.path.exists(INPUT_FILE):
+        print(f"❌ Fichier introuvable : {INPUT_FILE}")
+        print("👉 Lancez d'abord l'extraction de features (step1_eye_features_extractor.py)")
+        return
+
     if os.path.exists(OUTPUT_FILE):
         df = pd.read_parquet(OUTPUT_FILE)
         print(f"🔄 Reprise du fichier existant : {OUTPUT_FILE}")
+
+        # Synchroniser is_multicolor depuis le fichier features (source de vérité)
+        df_feat = pd.read_parquet(INPUT_FILE)[['is_multicolor']]
+        # Mettre à jour uniquement les lignes présentes dans les deux fichiers
+        common_idx = df.index.intersection(df_feat.index)
+        df.loc[common_idx, 'is_multicolor'] = df_feat.loc[common_idx, 'is_multicolor']
+        print(f"   🔄 is_multicolor synchronisé depuis {INPUT_FILE}")
     else:
-        if not os.path.exists(INPUT_FILE):
-            print(f"❌ Fichier introuvable : {INPUT_FILE}")
-            print("👉 Lancez d'abord l'extraction de features (step1_eye_features_extractor.py)")
-            return
-        
         df = pd.read_parquet(INPUT_FILE)
         df['manual_label_index'] = -1
         df['label_status'] = 'todo'
         print(f"🆕 Nouveau fichier créé depuis : {INPUT_FILE}")
+
+    if 'is_multicolor' not in df.columns:
+        df['is_multicolor'] = False
+    df['is_multicolor'] = df['is_multicolor'].fillna(False).astype(bool)
+
+    # Les produits multi-couleurs sont explicitement mis de côté
+    multi_todo_mask = (df['is_multicolor']) & (df['label_status'] == 'todo')
+    if multi_todo_mask.any():
+        df.loc[multi_todo_mask, 'label_status'] = 'multicolor'
+
+    multi_count = int(df['is_multicolor'].sum())
+    print(f"\n🎨 Produits multi-couleurs détectés : {multi_count}")
+    print("   👉 Ils sont exclus du labeling single-color et marqués 'multicolor'")
 
     # Sélection équilibrée par catégorie
     todo_indices = []
@@ -144,7 +164,11 @@ def main():
         needed = TARGET_PER_CLASS - done
         
         if needed > 0:
-            candidates_idx = df[(df[CATEGORY_COL] == cat) & (df['label_status'] == 'todo')].index.tolist()
+            candidates_idx = df[
+                (df[CATEGORY_COL] == cat)
+                & (df['label_status'] == 'todo')
+                & (~df['is_multicolor'])
+            ].index.tolist()
             if len(candidates_idx) > 0:
                 picked = np.random.choice(candidates_idx, min(len(candidates_idx), needed), replace=False)
                 todo_indices.extend(picked)

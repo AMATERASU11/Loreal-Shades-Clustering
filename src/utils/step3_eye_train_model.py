@@ -24,7 +24,13 @@ def main():
 
     # Chargement des données labellisées
     df = pd.read_parquet(LABELED_FILE)
+    if 'is_multicolor' not in df.columns:
+        df['is_multicolor'] = False
+    df['is_multicolor'] = df['is_multicolor'].fillna(False).astype(bool)
+
     df_done = df[df['label_status'] == 'done'].copy()
+    excluded_multi = int(df_done['is_multicolor'].sum())
+    df_done = df_done[~df_done['is_multicolor']].copy()
     
     if len(df_done) == 0:
         print("❌ Aucune donnée labellisée trouvée")
@@ -32,6 +38,8 @@ def main():
         return
     
     print(f"📚 Données chargées : {len(df_done)} exemples labellisés")
+    if excluded_multi > 0:
+        print(f"🎨 Exemples multi-couleurs exclus de l'entraînement : {excluded_multi}")
     
     # Distribution par catégorie
     print(f"\n📊 Distribution par catégorie:")
@@ -55,7 +63,7 @@ def main():
     print(f"\n🔀 Split train/test (stratifié par catégorie)...")
     
     try:
-        X_train, X_test, y_train, y_test, cat_train, cat_test = train_test_split(
+        X_train, X_test, y_train, y_test, _, cat_test = train_test_split(
             X, y, categories,
             test_size=0.2, 
             random_state=42, 
@@ -65,7 +73,7 @@ def main():
     except ValueError as e:
         print(f"   ⚠️ Split stratifié impossible : {e}")
         print(f"   📝 Split non-stratifié utilisé à la place")
-        X_train, X_test, y_train, y_test, cat_train, cat_test = train_test_split(
+        X_train, X_test, y_train, y_test, _, cat_test = train_test_split(
             X, y, categories,
             test_size=0.2, 
             random_state=42
@@ -95,12 +103,6 @@ def main():
     
     print(f"🎯 Accuracy Train : {train_acc*100:.2f}%")
     print(f"🎯 Accuracy Test  : {test_acc*100:.2f}%")
-    
-    # Détection de surapprentissage
-    if train_acc - test_acc > 0.10:
-        print(f"⚠️ Attention : Surapprentissage possible (écart de {(train_acc - test_acc)*100:.1f}%)")
-    else:
-        print(f"✅ Pas de surapprentissage détecté")
     
     # 5. Performance par catégorie
     print(f"\n📊 PERFORMANCE PAR CATÉGORIE (Test Set)")

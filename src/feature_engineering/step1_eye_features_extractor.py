@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import re
 import cv2
 from rembg import remove
 from PIL import Image
@@ -21,6 +22,25 @@ IMAGE_DIR = os.path.join(BASE_DIR, "data", "raw", "images")
 # Configuration KMeans
 N_CLUSTERS = 5  # 5 clusters comme pour Lip
 
+# Mots-clés multi-couleurs : communs à toutes les catégories
+_BASE_KEYWORDS = ['palette', 'palettes', 'quad', 'quint',
+                  'coffret', 'coffrets', 'assortiment']
+
+# Mots-clés additionnels sûrs uniquement pour Eye Shadow
+# ("duo", "trio", "set", "kit" sont des multi-teintes en Eye Shadow
+#  mais pas en Eye Liner / Eyebrow / Mascara où ils désignent
+#  des outils double-embout ou des lots)
+_EYESHADOW_EXTRA = ['duo', 'trio', 'set', 'kit']
+
+def _build_pattern(keywords):
+    return re.compile(
+        r'\b(' + '|'.join(re.escape(kw) for kw in keywords) + r')\b',
+        re.IGNORECASE
+    )
+
+_PATTERN_BASE = _build_pattern(_BASE_KEYWORDS)
+_PATTERN_EYESHADOW = _build_pattern(_BASE_KEYWORDS + _EYESHADOW_EXTRA)
+
 def get_hsv(rgb):
     """RGB [0-255] -> HSV [0-1]"""
     rgb_norm = np.array(rgb).reshape(1, 1, 3) / 255.0
@@ -30,23 +50,23 @@ def get_roi_by_category(img_rgb, category_l3):
     """
     Découpe la zone d'intérêt selon la catégorie de produit Eye.
     
-    Stratégies:
-    - Eye Liner / Mascara : Zone centrale (30%) pour capturer la pointe/applicateur
-    - Eyebrow : Zone centrale (50%) pour le crayon
-    - Eye Shadow : Image complète pour les palettes
+    Stratégies adaptées à la forme réelle des produits :
+    - Eye Liner / Mascara / Eyebrow : Haut 40% (la pointe/brosse/mine colorée est en haut)
+    - Fake Lashes : Centre 60% (les cils sont centrés dans le boîtier)
+    - Eye Shadow : Image complète (la couleur couvre le produit)
     """
     h, w = img_rgb.shape[:2]
     
-    if category_l3 in ['Eye Liner', 'Mascara']:
-        crop_ratio = 0.30
-        y1 = int(h * (0.5 - crop_ratio/2))
-        y2 = int(h * (0.5 + crop_ratio/2))
-        x1 = int(w * (0.5 - crop_ratio/2))
-        x2 = int(w * (0.5 + crop_ratio/2))
-        return img_rgb[y1:y2, x1:x2]
-        
-    elif category_l3 == 'Eyebrow':
-        crop_ratio = 0.50
+    if category_l3 in ['Eye Liner', 'Mascara', 'Eyebrow']:
+        # Haut 40% : la couleur du produit (pointe, brosse, mine) est en haut
+        crop_h = 0.40
+        y1 = 0
+        y2 = int(h * crop_h)
+        return img_rgb[y1:y2, :]
+    
+    elif category_l3 == 'Fake Lashes':
+        # Centre 60% : les cils sont centrés dans le boîtier
+        crop_ratio = 0.60
         y1 = int(h * (0.5 - crop_ratio/2))
         y2 = int(h * (0.5 + crop_ratio/2))
         x1 = int(w * (0.5 - crop_ratio/2))
@@ -68,8 +88,24 @@ def get_hsv_params_by_category(category_l3):
         return 25, 40, 200
     elif category_l3 == 'Eyebrow':
         return 20, 50, 180
+    elif category_l3 == 'Fake Lashes':
+        return 15, 30, 200
     else:  # Eye Shadow
         return 30, 60, 250
+
+def detect_multicolor_product(title, category_l3):
+    """
+    Détecte si un produit est multi-couleurs à partir de son titre.
+
+    Utilise des mots-clés différents selon la catégorie :
+    - Eye Shadow : keywords larges (duo, trio, set, kit + base)
+    - Autres : keywords stricts (palette, quad, quint, coffret)
+    """
+    if not isinstance(title, str) or not title.strip():
+        return False
+
+    pattern = _PATTERN_EYESHADOW if category_l3 == 'Eye Shadow' else _PATTERN_BASE
+    return bool(pattern.search(title))
 
 def process_image_complete(img_path, category_l3):
     """
@@ -154,7 +190,7 @@ def process_image_complete(img_path, category_l3):
 
         return sorted_centers, sorted_areas, feature_vector
 
-    except Exception as e:
+    except Exception:
         return None, None, None
 
 def main():
@@ -202,6 +238,13 @@ def main():
     df['kmeans_areas'] = all_areas
     df['features_spatial'] = all_features
     
+    # Détection multi-couleurs par mots-clés (titre + catégorie)
+    df['is_multicolor'] = df.apply(
+        lambda row: detect_multicolor_product(
+            row.get('title', ''), row.get('category_level_3_name', '')
+        ), axis=1
+    )
+    
     # Filtrer les lignes invalides
     df_clean = df[df['features_spatial'].notna()].copy()
     
@@ -209,6 +252,8 @@ def main():
     print(f"   - Images traitées avec succès : {len(df_clean)}")
     print(f"   - Échecs d'extraction         : {len(df) - len(df_clean)}")
     print(f"   - Taux de réussite            : {len(df_clean) / len(df) * 100:.2f}%")
+    multi_count = int(df_clean['is_multicolor'].sum())
+    print(f"   - Produits multi-couleurs     : {multi_count}")
     
     # Sauvegarde
     os.makedirs(os.path.dirname(OUTPUT_PARQUET), exist_ok=True)
