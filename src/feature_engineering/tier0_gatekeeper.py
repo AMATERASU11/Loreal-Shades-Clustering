@@ -16,6 +16,8 @@ Détection kit hybride (NLP + ΔE visuel) :
   'kit_monocolor'  → 1 mot couleur, OU duo/trio + 0 couleur + pas de séparateur → gardé
   'kit_ambiguous'  → 0 mot couleur + quad/quintet/sextet ou N-count → ΔE tier3 décide
   'incolore'       → [TAG_INCOLORE] — exclu
+  'nail_accessory' → faux ongles / outils / effets spéciaux — exclu
+  'volume_only'    → shade_name = volume sans nom couleur — exclu
   'normal'         → passe au Tier 1
 """
 import re
@@ -48,6 +50,7 @@ _INCOLOR_SHADE_SUB = re.compile(
     r'|no\s*color|sans\s*couleur'
     r'|primer|hardener|strengthener|durcisseur'
     r'|sealant|finition|nail\s*treatment|soin|traitement'
+    r'|color\s+base|colour\s+base|french\s+base|base\s+french'
     r')\b',
     re.IGNORECASE
 )
@@ -61,6 +64,7 @@ _INCOLOR_TITLE = re.compile(
     r'|nail\s*primer|cuticle\s*oil|huile\s*cuticule'
     r'|nail\s*sealer|nail\s*sealant'
     r'|vernis\s*(?:de\s*)?(?:finition|protection|soin)'
+    r'|b[\s\-]?gloss\s+top\s*coat|b[\s\-]?gloss\s+base\s*coat'
     r')\b',
     re.IGNORECASE
 )
@@ -128,7 +132,7 @@ _KIT_EXPLICIT = re.compile(
     re.IGNORECASE
 )
 
-# ── Anti-FP : nail tips / faux ongles ──
+# ── Anti-FP : nail tips / faux ongles (anti-FP pour incolore/kit) ──
 _NAIL_TIPS = re.compile(
     r'\b('
     r'nail\s*tips?|fake\s*nails?|faux\s*ongles?|press[\s\-]?on'
@@ -137,6 +141,74 @@ _NAIL_TIPS = re.compile(
     r'|ballerina|coffin\s*(?:nail|tip)|almond\s*(?:nail|tip)'
     r'|nail\s*glue|builder\s*tip'
     r')\b',
+    re.IGNORECASE
+)
+
+# ── Faux ongles / Press-on — détection POSITIVE → exclu ──
+# Plus spécifique que _NAIL_TIPS pour éviter les faux positifs
+_PRESS_ON_POSITIVE = re.compile(
+    r'\b('
+    r'fake\s*nails?|faux\s*ongles?'
+    r'|false\s*nails?'
+    r'|press[\s\-]?on\s*nails?'
+    r'|capsules?\s*(?:d.?)?ongles?'
+    r'|stick[\s\-]?on\s*nails?'
+    r')\b',
+    re.IGNORECASE
+)
+
+# ── Volume-only shade name (pas un nom de couleur) ──
+# Ex: "7.2 ml (Lot de 1)", "0.5 Fl Oz (Pack of 1)", "15 ml (Pack of 1)"
+_VOLUME_ONLY_SHADE = re.compile(
+    r'^\s*[\d]+[,.]?[\d]*\s*(ml|fl\.?\s*oz|oz)\s*(\(.*\))?\s*$',
+    re.IGNORECASE
+)
+
+# ── Shade placeholder (pas une vraie couleur) ──
+# Ex: "Please select a shade", "Select a shade", "Choose your shade"
+_SHADE_PLACEHOLDER = re.compile(
+    r'^\s*(please\s+)?select\s+(a\s+)?shade|choose\s+(your\s+)?shade\s*$',
+    re.IGNORECASE
+)
+
+# ── Précédé de No./N°/# → numéro de produit, pas quantité ──
+_PRODUCT_NO_PREFIX = re.compile(
+    r'\b(?:no\.?\s*|n°\s*|#\s*)\d+\b',
+    re.IGNORECASE
+)
+
+# ── Accessoires ongles (non-vernis) → exclu ──
+# Patterns très spécifiques — ne pas inclure uv/led lamp (kits gel légitimes)
+_NAIL_ACCESSORY = re.compile(
+    r'\b('
+    r'nail\s*drill|electric\s*nail'
+    r'|nail\s*art\s*pen|nail\s*stamper|nail\s*printer'
+    r'|cuticle\s*(?:pusher|nipper|remover)'
+    r'|nail\s*mold|nail\s*form'
+    r')\b',
+    re.IGNORECASE
+)
+
+# ── Builder/extension gel (sans "polish" après) + guard couleur ──
+_BUILDER_GEL = re.compile(
+    r'\b(builder\s*gel|extension\s*gel|hard\s*gel|poly\s*(?:extension|gel))\b',
+    re.IGNORECASE
+)
+
+# ── Effets spéciaux non-classifiables (crackle, thermo, magnétique) ──
+_SPECIAL_EFFECT = re.compile(
+    r'\b('
+    r'crackle|crackelure|craquelure'
+    r'|mood\s*(?:polish|changing|change|nail)'
+    r'|thermo(?:chromic)?\s*(?:nail|polish|gel)?'
+    r'|temperature\s*changing'
+    r')\b',
+    re.IGNORECASE
+)
+
+# ── Kit "Ensemble" en français (Bluesky, etc.) ──
+_ENSEMBLE_KIT = re.compile(
+    r'\b(ensemble|collection)\s+(vernis|nail\s*polish|gel\s*nail|semi\s*permanent)\b',
     re.IGNORECASE
 )
 
@@ -176,7 +248,7 @@ def _is_kit(shade: str, title: str) -> Union[Literal["multicolor", "monocolor", 
     Détecte si le produit est un kit, et si oui, son type :
       'multicolor' → ≥2 mots couleur dans shade_name → exclure
       'monocolor'  → 1 mot couleur, OU duo/trio + 0 couleur + pas de séparateur → garder
-      'ambiguous'  → 0 mot couleur + quad/quintet/sextet ou N-count → ΔE décide
+      'ambiguous'  → 0 mot couleur, quad/quintet/sextet ou N-count → ΔE décide
       False        → pas un kit
 
     Règle duo/trio : "DND GEL DUO 736 WATERMELON" = 2 flacons même couleur → monocolor
@@ -219,7 +291,9 @@ def _is_kit(shade: str, title: str) -> Union[Literal["multicolor", "monocolor", 
     if not detected:
         # N_UNIT sur le titre uniquement (pas shade_name) pour éviter que les
         # IDs de nuance ("008 Vernis", "32 Gel Effect") déclenchent faussement
-        for m in _KIT_N_UNIT.finditer(title):
+        # Exclure les patterns "No. 07 Vernis" (numéro produit, pas quantité)
+        title_clean = _PRODUCT_NO_PREFIX.sub('', title)
+        for m in _KIT_N_UNIT.finditer(title_clean):
             n = int(m.group(1))
             if KIT_MIN_COUNT <= n <= KIT_MAX_SHADE_NUMBER:
                 detected = True
@@ -234,7 +308,7 @@ def _is_kit(shade: str, title: str) -> Union[Literal["multicolor", "monocolor", 
         return "multicolor"
     if n_colors == 1:
         return "monocolor"
-    # 0 segments couleur : duo/trio sans séparateur → même nuance, 2 formats (gel+vernis)
+    # 0 mots couleur : duo/trio sans séparateur → même nuance, 2 formats (gel+vernis)
     if is_duo_trio and not _SHADE_SEPARATOR.search(shade):
         return "monocolor"
     return "ambiguous"
@@ -280,6 +354,8 @@ ProductType = Literal[
     "kit_monocolor",    # pack N×même couleur   → traité comme normal
     "kit_ambiguous",    # kit sans couleur NLP  → ΔE decide dans predict()
     "incolore",
+    "nail_accessory",   # faux ongles, outils, effets spéciaux → exclu
+    "volume_only",      # shade_name = volume sans couleur → exclu
 ]
 
 
@@ -297,6 +373,39 @@ def classify(row: pd.Series) -> ProductType:
     """
     shade = str(row.get("shade_name", "") or "").strip()
     title = str(row.get("title",      "") or "").strip()
+    full  = f"{shade} {title}"
+
+    # ── Nouvelles règles d'exclusion (v2) ──────────────────────────
+
+    # 1. Shade name = volume sans couleur : "7.2 ml (Lot de 1)", "0.5 Fl Oz"
+    if _VOLUME_ONLY_SHADE.match(shade):
+        return "volume_only"
+
+    # 1b. Shade name = placeholder générique : "Please select a shade"
+    if _SHADE_PLACEHOLDER.match(shade):
+        return "volume_only"
+
+    # 2. Faux ongles / press-on (détection positive dans titre)
+    if _PRESS_ON_POSITIVE.search(title):
+        return "nail_accessory"
+
+    # 3. Accessoires ongles non-vernis (nail drill, nail art pen, etc.)
+    if _NAIL_ACCESSORY.search(full):
+        return "nail_accessory"
+
+    # Builder/extension gel SANS couleur dans shade → clairement un accessoire
+    if _BUILDER_GEL.search(full) and not _COLOR_CANCEL.search(shade):
+        return "nail_accessory"
+
+    # 4. Effets spéciaux non-classifiables (crackle, mood, thermo)
+    if _SPECIAL_EFFECT.search(full):
+        return "nail_accessory"
+
+    # 5. Kit "Ensemble" en français (Bluesky Ensemble Vernis Semi Permanent...)
+    if _ENSEMBLE_KIT.search(title) and not _COLOR_CANCEL.search(shade):
+        return "kit_multicolor"
+
+    # ── Règles originales ──────────────────────────────────────────
 
     # Incolore prioritaire : "2Pcs Top Coat Set" → incolore, pas kit
     if _is_incolore(shade, title):
@@ -333,7 +442,7 @@ def filter_normal(df: pd.DataFrame) -> pd.DataFrame:
               (kit_ambiguous → ΔE décide dans predict())
     """
     df = apply_to_dataframe(df)
-    _EXCLUDED = {"kit_multicolor", "incolore"}
+    _EXCLUDED = {"kit_multicolor", "incolore", "nail_accessory", "volume_only"}
     excluded = df[df["tier0_tag"].isin(_EXCLUDED)]
     n_multi    = (df["tier0_tag"] == "kit_multicolor").sum()
     n_mono     = (df["tier0_tag"] == "kit_monocolor").sum()
