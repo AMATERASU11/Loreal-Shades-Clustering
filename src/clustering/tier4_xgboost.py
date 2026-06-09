@@ -414,6 +414,9 @@ def predict(row: pd.Series, model: "XGBClassifier") -> dict:
     if t0 == "incolore":
         return {**_none, "tag": TAG_INCOLORE}
 
+    if t0 in ("nail_accessory", "volume_only"):
+        return {**_none, "tag": TAG_KIT}
+
     # ── Tier 1 ───────────────────────────────────────────────
     t1 = tier1.classify(row)
     if t1 != "normal":
