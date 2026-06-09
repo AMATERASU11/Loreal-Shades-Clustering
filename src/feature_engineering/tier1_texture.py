@@ -1,66 +1,74 @@
 """
 Tier 1 — Texture Detector
 ═══════════════════════════════════════════════════════════════════
-Détecte les textures complexes (glitter, shimmer, holographique...)
-et les met en quarantaine.
+Détecte les textures et retourne 3 types :
 
-Décision métier (irrévocable) :
-  Option A — Quarantaine pure : les vernis à texture complexe
-  ne sont PAS traités par KMeans/XGBoost.
-  Raison : base transparente avec confettis, base noire + paillettes
-  multicolores → l'extraction de la base détruirait le clustering.
+  'texture_complexe' → quarantaine totale — impossible d'extraire une couleur
+        glitter, holographique, iridescent, duochrome, multichrome,
+        flake, foil, aurora, galaxy, chameleon, color-changing
 
-Source recyclée : FINISH_WORDS de methode_4/pipeline.py
+  'cat_eye'          → traitement spécial dans Tier 4
+        cat eye et produits magnétiques : ont une couleur de BASE extractable
+        → NLP prior en premier, vision en fallback
 
-Retourne :
-  'texture_complexe' → [TAG_TEXTURE] — exclu du pipeline
-  'normal'           → passe au Tier 2
+  'normal'           → passe au Tier 2 / 3 / 4 sans restriction
+        shimmer, sparkle, metallic, chrome, mirror : base colorée dominante,
+        KMeans peut extraire la teinte principale
+
+Décision métier :
+  glitter/holo/duochrome = pas de couleur unique → quarantaine irrévocable
+  cat eye = couleur de base bien définie (bleu, vert, rouge...) → NLP ou vision
+  shimmer/chrome = finish sur couleur normale → vision normale
 """
 import re
 from typing import Literal
 
 import pandas as pd
 
+
 # ═══════════════════════════════════════════════════════════════
-#  PATTERNS DE QUARANTAINE
+#  PATTERN CAT EYE / MAGNÉTIQUE
 # ═══════════════════════════════════════════════════════════════
 
-# Termes déclenchant la quarantaine — 1 match = exclu
-# Recyclé de methode_4/pipeline.py FINISH_WORDS, enrichi
-_QUARANTINE = re.compile(
+_CAT_EYE = re.compile(
     r'\b('
-    # Paillettes / particules
-    r'glitter|shimmer|sparkle|spangle|tinsel|sequin'
-    # Effets optiques complexes
-    r'|holograph(?:ic)?|holo|iridescent|duochrome|multichrome'
-    r'|aurora|galaxy|chameleon|colour.changing|color.changing'
-    # Effets magnétiques / cat eye
-    r'|cat[\s\-]?eye|magnetic|magnet(?:ic)?'
-    # Effets miroir / chrome
-    r'|chrome|mirror|foil|metallic\s+foil'
-    # Flocons
-    r'|flake|flakie|jelly\s+flake|nail\s+art\s+flake'
+    r'cat[\s\-]?eye'             # cat eye, cat-eye, cateye
+    r'|magnetic|magnet(?:ic)?'   # magnetic, magnet, magnetical
+    r'|\d+[dD]\s*cat'            # 9D cat, 7D cat, 5D cat
+    r'|cat\s*\d+[dD]'            # cat 9D
+    r'|aurora\s*cat|cat\s*aurora'  # aurora cat eye variants
+    r'|magnetic\s*gel|gel\s*magnetic'
+    r'|star\s*field|starfield'   # effet magnétique étoilé
     r')\b',
     re.IGNORECASE
 )
 
-# Termes NON problématiques (faux positifs potentiels → on les ignore)
-# "metallic" seul : souvent extractible → pas en quarantaine
-# "pearl" seul    : souvent extractible → pas en quarantaine
-# "matte", "satin", "glossy", "cream", "sheer", "opaque" → toujours OK
+# ═══════════════════════════════════════════════════════════════
+#  PATTERN QUARANTAINE DURE (pas de couleur unique extractable)
+# ═══════════════════════════════════════════════════════════════
 
-# ── Exception : si shade_name contient uniquement un terme technique ──
-# Ex : "Mirror" comme shade_name créatif sans autre contexte
-# On vérifie que le terme est dans un contexte descriptif (title ou desc)
-# et pas juste un nom d'artiste ou de collection
-_CONTEXT_NEEDED = re.compile(
-    r'\b(mirror|foil)\b',
+_QUARANTINE_HARD = re.compile(
+    r'\b('
+    # Paillettes / particules multicolores
+    r'glitter|spangle|tinsel|sequin'
+    # Effets optiques qui changent de couleur
+    r'|holograph(?:ic)?|holo|iridescent|duochrome|multichrome'
+    r'|aurora|galaxy|chameleon|colour.changing|color.changing'
+    # Effets décoratifs opaques sur fond quelconque
+    r'|foil|metallic\s+foil'
+    # Flocons de couleurs mélangées
+    r'|flake|flakie|jelly\s+flake|nail\s+art\s+flake'
+    # Dégradé multi-couleurs (pas de couleur unique extractable)
+    r'|ombre|gradient'
+    r')\b',
     re.IGNORECASE
 )
 
-# Mots qui confirment que c'est bien une texture complexe (pas juste un nom)
+# "foil" seul peut être un nom de teinte créatif (ex: "Gold Foil" = juste doré)
+# → on vérifie qu'il y a un contexte nail/polish/effect avant de quarantiner
+_FOIL_ALONE = re.compile(r'^foil$', re.IGNORECASE)
 _TEXTURE_CONTEXT = re.compile(
-    r'\b(nail\s*polish|vernis|gel|polish|nail|effect|finish|coat|ongles?)\b',
+    r'\b(nail\s*polish|vernis|gel|polish|nail|effect|finish|coat|ongles?|art)\b',
     re.IGNORECASE
 )
 
@@ -69,60 +77,62 @@ _TEXTURE_CONTEXT = re.compile(
 #  INTERFACE PUBLIQUE
 # ═══════════════════════════════════════════════════════════════
 
-TextureType = Literal["texture_complexe", "normal"]
+TextureType = Literal["texture_complexe", "cat_eye", "normal"]
 
 
 def classify(row: pd.Series) -> TextureType:
     """
-    Classifie un produit en 'texture_complexe' ou 'normal'.
+    Classifie un produit selon sa texture.
 
     Cherche dans shade_name + title + description (les 3 colonnes).
-    1 match suffit pour la quarantaine.
+    Cat eye est vérifié EN PREMIER — un "Cat Eye Glitter" est cat_eye, pas quarantaine.
 
     Args:
         row: Ligne du DataFrame (shade_name, title, description)
 
     Returns:
-        'texture_complexe' | 'normal'
+        'cat_eye'          | 'texture_complexe' | 'normal'
     """
     shade = str(row.get("shade_name",  "") or "")
     title = str(row.get("title",       "") or "")
-    desc  = str(row.get("description", "") or "")[:300]  # tronqué pour perf
+    desc  = str(row.get("description", "") or "")[:300]
 
-    # Chercher d'abord dans shade + title (plus fiables)
     shade_title = f"{shade} {title}"
-    m = _QUARANTINE.search(shade_title)
-    if m:
-        word = m.group(0).lower()
-        # Pour "mirror" et "foil" : vérifier contexte
-        if _CONTEXT_NEEDED.match(word):
-            if _TEXTURE_CONTEXT.search(shade_title):
-                return "texture_complexe"
-            # Pas de contexte → peut-être juste un nom de teinte
-        else:
-            return "texture_complexe"
+    full        = f"{shade_title} {desc}"
 
-    # Chercher dans la description (secondaire)
-    if _QUARANTINE.search(desc):
-        m_desc = _QUARANTINE.search(desc)
-        word = m_desc.group(0).lower()
-        if _CONTEXT_NEEDED.match(word):
-            if _TEXTURE_CONTEXT.search(desc):
-                return "texture_complexe"
-        else:
-            return "texture_complexe"
+    # Cat eye prioritaire — on peut quand même extraire la couleur de base
+    if _CAT_EYE.search(shade_title) or _CAT_EYE.search(desc):
+        return "cat_eye"
+
+    # Quarantaine dure — pas de couleur unique
+    m = _QUARANTINE_HARD.search(shade_title)
+    if m:
+        word = m.group(0).strip().lower()
+        # "foil" seul dans shade_name = peut-être juste un nom de teinte
+        if _FOIL_ALONE.match(word):
+            if not _TEXTURE_CONTEXT.search(shade_title):
+                return "normal"
+        return "texture_complexe"
+
+    if _QUARANTINE_HARD.search(desc):
+        m_desc = _QUARANTINE_HARD.search(desc)
+        word   = m_desc.group(0).strip().lower()
+        if _FOIL_ALONE.match(word):
+            if not _TEXTURE_CONTEXT.search(desc):
+                return "normal"
+        return "texture_complexe"
 
     return "normal"
 
 
 def get_detected_keyword(row: pd.Series) -> str | None:
-    """Retourne le mot-clé texture qui a déclenché la détection (debug)."""
+    """Retourne le mot-clé texture/cat-eye détecté (debug)."""
     full = " ".join([
         str(row.get("shade_name",  "") or ""),
         str(row.get("title",       "") or ""),
         str(row.get("description", "") or "")[:300],
     ])
-    m = _QUARANTINE.search(full)
+    m = _CAT_EYE.search(full) or _QUARANTINE_HARD.search(full)
     return m.group(0) if m else None
 
 
@@ -137,10 +147,21 @@ def apply_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def filter_normal(df: pd.DataFrame) -> pd.DataFrame:
-    """Retourne uniquement les produits 'normal' après Tier 1."""
+    """
+    Retourne les produits utilisables après Tier 1.
+
+    Exclus  : texture_complexe uniquement
+    Gardés  : normal + cat_eye
+              (cat_eye → NLP prior dans predict(), couleur de base réelle)
+    """
     df = apply_to_dataframe(df)
     n_texture = (df["tier1_tag"] == "texture_complexe").sum()
-    print(f"Tier 1 — exclus : {n_texture} textures complexes "
-          f"/ {len(df)} "
+    n_cat_eye = (df["tier1_tag"] == "cat_eye").sum()
+    n_normal  = (df["tier1_tag"] == "normal").sum()
+    print(f"Tier 1 — exclus : {n_texture} textures complexes / {len(df)} "
           f"({n_texture/len(df)*100:.1f}%)")
-    return df[df["tier1_tag"] == "normal"].copy()
+    if n_cat_eye:
+        print(f"         cat eye : {n_cat_eye} → NLP prior dans Tier 4")
+    if n_normal:
+        print(f"         normaux : {n_normal}")
+    return df[df["tier1_tag"] != "texture_complexe"].copy()
