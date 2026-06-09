@@ -220,8 +220,6 @@ data/images
 # Outputs - fichiers générés (garder structure)
 outputs/models/**
 !outputs/models/.gitkeep
-!outputs/models/shadenail_xgb.pkl
-!outputs/models/shadenail_meta.json
 outputs/reports/**
 !outputs/reports/.gitkeep
 outputs/visualizations/**
